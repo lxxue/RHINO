@@ -1,0 +1,24 @@
+hydra:
+  run:
+    dir: ${result_root}/${dataset.train.subject}/${model.name}/${version}
+  job:
+    chdir: true
+
+defaults:
+  - model: hoi
+  - dataset: template
+  - _self_
+
+# Root containing the preprocessed sequences (run_pipeline.py output layout:
+# {data_root}/stage/<sequence>/processed; in-the-wild sequences use
+# {data_root}/inthewild/<sequence>/processed). Override per machine, e.g.
+#   python train.py data_root=/data/RHINO/ result_root=/results/RHINO/ ...
+data_root: /path/to/datasets/
+result_root: /path/to/results/
+# SMPL-X canonical SDF initialization; null uses the bundled
+# rhino/checkpoints/smplx_init_last.ckpt
+smplx_ckpt_path: null
+version: null
+test_only: False
+ckpt_path: null
+wandb: True

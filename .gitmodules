@@ -1,0 +1,25 @@
+[submodule "third_party/mast3r"]
+	path = third_party/mast3r
+	url = https://github.com/lxxue/mast3r.git
+	branch = main
+	ignore = untracked
+[submodule "third_party/Grounded-SAM-2"]
+	path = third_party/Grounded-SAM-2
+	url = https://github.com/IDEA-Research/Grounded-SAM-2
+[submodule "third_party/Hierarchical-Localization"]
+	path = third_party/Hierarchical-Localization
+	url = https://github.com/lxxue/Hierarchical-Localization.git
+	branch = image_mask
+[submodule "third_party/AiOS"]
+	path = third_party/AiOS
+	url = https://github.com/lxxue/AiOS.git
+[submodule "third_party/sapiens"]
+	path = third_party/sapiens
+	url = https://github.com/facebookresearch/sapiens.git
+[submodule "third_party/Metric3D"]
+	path = third_party/Metric3D
+	url = https://github.com/YvanYin/Metric3D.git
+[submodule "third_party/InteractVLM"]
+	path = third_party/InteractVLM
+	url = https://github.com/lxxue/InteractVLM.git
+	ignore = untracked

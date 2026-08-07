@@ -1,0 +1,12 @@
+{
+  "_comment": "BenchRHINO sequences. Offset convention (0-based): gt_frame = pred_frame + offset. GT paths: separated/{human,object}/{gt_frame:05d}.ply, smplx_fitting/f{gt_frame:05d}_smplx.pkl. gender: SMPL-X gender used for fitting/training. object_name: object prompt for InteractVLM (step 12).",
+  "sequences": [
+    {"seq_name": "S1_Take7", "take_name": "S1_Take7", "offset": 31, "num_gt_frames": 450, "num_pred_frames": 579, "gender": "male", "object_name": "gray_box"},
+    {"seq_name": "S1_Take8", "take_name": "S1_Take8", "offset": 40, "num_gt_frames": 450, "num_pred_frames": 509, "gender": "male", "object_name": "white_box"},
+    {"seq_name": "S1_Take3", "take_name": "S1_Take3", "offset": 24, "num_gt_frames": 450, "num_pred_frames": 642, "gender": "male", "object_name": "suitcase"},
+    {"seq_name": "S2_Take5", "take_name": "S2_Take5", "offset": 28, "num_gt_frames": 449, "num_pred_frames": 465, "gender": "female", "object_name": "table"},
+    {"seq_name": "S2_Take9", "take_name": "S2_Take9", "offset": 27, "num_gt_frames": 450, "num_pred_frames": 499, "gender": "female", "object_name": "toy"},
+    {"seq_name": "S3_Take6", "take_name": "S3_Take6", "offset": 16, "num_gt_frames": 450, "num_pred_frames": 551, "gender": "female", "object_name": "suitcase"},
+    {"seq_name": "S4_Take2", "take_name": "S4_Take2", "offset": 25, "num_gt_frames": 449, "num_pred_frames": 480, "gender": "male", "object_name": "chair"}
+  ]
+}

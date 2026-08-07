@@ -1,0 +1,52 @@
+gender: male
+name: hoi_obj
+train:
+  subject: demo_table
+  data_dir: inthewild/${dataset.train.subject}/processed
+  start_frame: 0
+  end_frame: 466 # inclusive
+  skip_step: 1
+  exclude_frames: null
+  img_resize_factor: 1
+  lazy_loading: true
+
+  num_sample: 1024
+  batch_size: 1
+  drop_last: False
+  shuffle: True
+  worker: 8
+  sampling_strategy: fg_obj_hand_bg  # in-the-wild: additionally sample hand-mask pixels
+
+val:
+  subject: ${dataset.train.subject}
+  data_dir: ${dataset.train.data_dir}
+  start_frame: ${dataset.train.start_frame}
+  end_frame: ${dataset.train.end_frame}
+  skip_step: ${dataset.train.skip_step}
+  exclude_frames: ${dataset.train.exclude_frames}
+  img_resize_factor: 2
+  lazy_loading: ${dataset.train.lazy_loading}
+
+  num_sample: -1
+  pixel_per_batch: 1024
+  batch_size: 1
+  drop_last: False
+  shuffle: False
+  worker: 8
+
+test:
+  subject: ${dataset.train.subject}
+  data_dir: ${dataset.train.data_dir}
+  start_frame: ${dataset.train.start_frame}
+  end_frame: ${dataset.train.end_frame}
+  skip_step: ${dataset.train.skip_step}
+  exclude_frames: ${dataset.train.exclude_frames}
+  img_resize_factor: 2
+  lazy_loading: ${dataset.train.lazy_loading}
+
+  num_sample: -1
+  pixel_per_batch: 1024
+  batch_size: 1
+  drop_last: False
+  shuffle: False
+  worker: 8

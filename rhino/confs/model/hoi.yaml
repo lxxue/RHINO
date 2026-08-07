@@ -1,0 +1,150 @@
+name: hoi
+cls: rhino.models.hoi.HOI
+max_steps: 100000
+val_steps: 3000
+is_continue: False
+learning_rate: 5.0e-4
+decay_rate: 0.1
+decay_steps: ${model.max_steps}
+smplx_init: True
+smplx_init_ckpt_path: ${smplx_ckpt_path}
+opt_smplx: True
+opt_camera_pose: True
+opt_object_pose: True
+opt_pose_freq: 10
+opt_pose_len: 4
+val_render_image: False
+test_render_image: False
+test_save_numerical_results: False
+update_canonical_mesh: True
+fg_implicit_network:
+  feature_vector_size: 256
+  dim_pose_embed: 0
+  d_in: 3
+  d_out: 1
+  dims: [256, 256, 256, 256, 256, 256, 256, 256]
+  init: geometry
+  bias: 0.6
+  skip_in: [4]
+  weight_norm: True
+  embedder_mode: fourier
+  multires: 6
+  cond: smplx
+  scene_bounding_sphere: 2.0
+  inside_outside: False
+fg_rendering_network:
+  feature_vector_size: 256
+  mode: idr_smplx_pose
+  dim_cond_embed: 8
+  d_in: 14
+  d_out: 3
+  dims: [256, 256, 256, 256]
+  weight_norm: True
+  multires_view: -1
+obj_implicit_network:
+  feature_vector_size: 256
+  dim_pose_embed: 0
+  d_in: 3
+  d_out: 1
+  dims: [256, 256, 256, 256, 256, 256, 256, 256]
+  init: geometry
+  bias: 0.5
+  skip_in: [4]
+  weight_norm: True
+  embedder_mode: fourier
+  multires: 6
+  cond: null
+  scene_bounding_sphere: 6.0
+  inside_outside: False
+obj_rendering_network:
+  feature_vector_size: 256
+  mode: idr_frame_encoding
+  dim_frame_encoding: 8
+  d_in: 9
+  d_out: 3
+  dims: [256, 256]
+  weight_norm: True
+  multires_view: 4
+bg_implicit_network:
+  feature_vector_size: 256
+  dim_pose_embed: 0
+  d_in: 3
+  d_out: 1
+  dims: [256, 256, 256, 256, 256, 256, 256, 256]
+  init: geometry
+  bias: 4.0
+  skip_in: [4]
+  weight_norm: True
+  embedder_mode: fourier
+  multires: 6
+  cond: null
+  scene_bounding_sphere: 9.0
+  inside_outside: True
+bg_rendering_network:
+  feature_vector_size: 256
+  mode: idr_frame_encoding
+  dim_frame_encoding: 32
+  d_in: 9
+  d_out: 3
+  dims: [256, 256]
+  weight_norm: True
+  multires_view: 4
+fg_density:
+  params_init: { beta: 0.1 }
+  beta_min: 0.0001
+obj_density:
+  params_init: { beta: 0.1 }
+  beta_min: 0.0001
+bg_density:
+  params_init: { beta: 0.1 }
+  beta_min: 0.0001
+fg_ray_sampler:
+  near: 0.0
+  N_samples: 64
+  N_samples_eval: 128
+  N_samples_extra: 32
+  eps: 0.1
+  beta_iters: 10
+  max_total_iters: 5
+  add_tiny: 1.0e-6
+obj_ray_sampler:
+  near: 0.0
+  N_samples: 64
+  N_samples_eval: 128
+  N_samples_extra: 32
+  eps: 0.1
+  beta_iters: 10
+  max_total_iters: 5
+  add_tiny: 1.0e-6
+bg_ray_sampler:
+  near: 0.0
+  N_samples: 64
+  N_samples_eval: 128
+  N_samples_extra: 32
+  eps: 0.1
+  beta_iters: 10
+  max_total_iters: 5
+  add_tiny: 1.0e-6
+loss:
+  eikonal_weight: 0.1
+  depth_weight: 0.1
+  fg_mask_weight: 1
+  bg_mask_weight: 0.2
+  obj_mask_weight: 1
+  normal_l1_weight: 0.05
+  normal_cos_weight: 0.05
+  density_weight: 0.005
+  in_surface_weight: 0.01
+  off_surface_weight: 0.003
+  penetration_weight: 0
+  self_penetration_weight: 1
+  s3im_weight: 0.1
+  hand_weight: 10
+  body_weight: 5
+  interactvlm_contact_weight: 0.8
+  hand_contact_weight: 0
+  body_pose_smooth_weight: 0
+  obj_pose_smooth_weight: 0
+  body_verts_smooth_weight: 40
+  obj_verts_smooth_weight: 60
+  max_steps: ${model.max_steps}

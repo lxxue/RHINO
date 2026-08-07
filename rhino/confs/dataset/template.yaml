@@ -1,0 +1,77 @@
+# Dataset configuration template for RHINO
+# Copy this file and customize for your sequence
+
+gender: male  # "male", "female", or "neutral"
+name: hoi_obj  # Dataset type, keep as "hoi_obj"
+
+train:
+  # Object pose file (optional — object_poses_centered.npy is the default when omitted)
+  obj_pose_file: object_poses_centered.npy
+
+  # Sequence identifier
+  subject: your_sequence_name
+
+  # Path to processed data directory (relative to data_root)
+  data_dir: path/to/your_sequence/processed
+
+  # Frame range (inclusive)
+  start_frame: 0
+  end_frame: 100
+  skip_step: 1
+
+  # List of frame indices to exclude, or null
+  exclude_frames: null
+
+  # Image resize factor: 1 (full res), 2 (half), or 4 (quarter)
+  img_resize_factor: 1
+
+  # Lazy loading: if true, load images/depths/normals/masks from disk per iteration
+  # instead of pre-loading all into RAM. Reduces memory and startup time at the cost
+  # of slightly slower iterations (~7-15% overhead with SSD).
+  lazy_loading: true
+
+  # Training parameters
+  num_sample: 1024  # Number of pixels to sample per image
+  batch_size: 1
+  drop_last: False
+  shuffle: True
+  worker: 8
+
+  # Sampling strategy: "uniform", "uniform_continuous", "weighted", "fg_obj_bg", etc.
+  sampling_strategy: fg_obj_bg
+
+val:
+  subject: ${dataset.train.subject}
+  data_dir: ${dataset.train.data_dir}
+  start_frame: ${dataset.train.start_frame}
+  end_frame: ${dataset.train.end_frame}
+  skip_step: ${dataset.train.skip_step}
+  exclude_frames: ${dataset.train.exclude_frames}
+  img_resize_factor: 2
+  lazy_loading: ${dataset.train.lazy_loading}
+  obj_pose_file: ${dataset.train.obj_pose_file}
+
+  num_sample: -1  # -1 means all pixels
+  pixel_per_batch: 1024
+  batch_size: 1
+  drop_last: False
+  shuffle: False
+  worker: 8
+
+test:
+  subject: ${dataset.train.subject}
+  data_dir: ${dataset.train.data_dir}
+  start_frame: ${dataset.train.start_frame}
+  end_frame: ${dataset.train.end_frame}
+  skip_step: ${dataset.train.skip_step}
+  exclude_frames: ${dataset.train.exclude_frames}
+  img_resize_factor: 2
+  lazy_loading: ${dataset.train.lazy_loading}
+  obj_pose_file: ${dataset.train.obj_pose_file}
+
+  num_sample: -1
+  pixel_per_batch: 1024
+  batch_size: 1
+  drop_last: False
+  shuffle: False
+  worker: 8
