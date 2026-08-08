@@ -18,7 +18,7 @@ setup(
         "rhino.evaluation": ["*.npz"],
     },
     install_requires=[
-        "numpy>=1.25.0",
+        "numpy>=1.25.0,<2",
         "pytorch-lightning>=2.3.3",
         "hydra-core>=1.3.2",
         "scikit-image",
