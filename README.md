@@ -86,6 +86,37 @@ pip install -e .
 
 </details>
 
+## Demo
+
+A self-contained demo bundle (7.6 GB) lets you inspect results or run the
+model directly, without going through the preprocessing pipeline:
+**[rhino_demo.zip](https://files.ait.ethz.ch/projects/rhino/rhino_demo.zip)**
+([Google Drive mirror](https://drive.google.com/file/d/10MM2aTyJgvERXEgGSNHGXZr-btdMIwEC/view?usp=sharing)).
+Unzipping yields `rhino_demo/{data,results}` with one in-the-wild sequence
+(`demo_table`):
+
+- `data/inthewild/demo_table/processed/` — the fully preprocessed sequence
+  (layout described in [Data Format](#data-format));
+- `results/demo_table/hoi/pretrained/checkpoints/` — the trained checkpoint;
+- `results/demo_table/hoi/pretrained/epoch_0000/` — pre-rendered results,
+  viewable without a GPU: per-frame comparison renders (ground truth |
+  prediction | error) in `rgb/`, `normal/`, and `depth/`, per-branch renders
+  (`*_fg`, `*_obj`, `*_bg`), and mesh exports (`mesh_deformed/`, `mesh_obj/`,
+  `mesh_canonical/`, `obj.ply`, `scene.ply`).
+
+To re-render everything from the checkpoint:
+```bash
+cd rhino
+python train.py dataset=demo_table \
+    data_root=/path/to/rhino_demo/data \
+    result_root=/path/to/rhino_demo/results \
+    version=pretrained test_only=True model.test_render_image=True wandb=False
+```
+Replace `test_only=True model.test_render_image=True` with
+`model.is_continue=True` to continue training from the checkpoint instead.
+Checkpoints for the seven stage sequences are available separately — see
+[Pretrained checkpoints](#pretrained-checkpoints).
+
 ## Preprocessing
 
 The preprocessing pipeline includes steps 0-13 plus a finalize step, covering the full path from raw video to training-ready `processed/` directory. All scripts use `tyro` for CLI argument parsing.
