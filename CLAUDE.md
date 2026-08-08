@@ -1,113 +1,91 @@
 # CLAUDE.md
 
-## Project Overview
+Guidance for AI coding agents working in this repository.
 
-This is the **public release repo** for RHINO (Reconstructing Human Interactions with Novel Objects), accepted at CVPR 2026. It contains training code for jointly reconstructing humans (VolSDF + SMPL-X), objects (VolSDF + 6D pose), and background scenes (static VolSDF) from monocular video, plus the full preprocessing pipeline (steps 0-13 + finalize) and evaluation tooling.
+## Project
 
-## Key Facts
+RHINO (CVPR 2026) jointly reconstructs a human (SMPL-X + VolSDF), a rigid
+manipulated object (VolSDF + per-frame 6D pose), and the static background
+scene (VolSDF) from a monocular RGB video. The repo contains the training
+code, the full preprocessing pipeline (steps 0-13 + finalize), evaluation
+tooling, and download links for the BenchRHINO dataset. Installation, usage
+commands, preprocessing setup, data formats, and the evaluation workflow are
+documented in README.md (collapsible sections) — this file only covers what
+the README does not.
 
-- **Training code**: Hydra + PyTorch Lightning; entry point `rhino/train.py`. The three implicit branches (human / object / background) live in `rhino/models/hoi_network.py`, losses in `rhino/models/hoi_loss.py`, the Lightning module in `rhino/models/hoi.py`.
-- **Preprocessing**: steps 0-13 + finalize, orchestrated by `rhino/preprocessing/run_pipeline.py`; all CLI uses tyro. Steps that need dedicated tool environments (SAM2, MASt3R, Metric3D, AiOS, Sapiens, InteractVLM) take their interpreters from `tool_config.py` (`--tools.*` flags).
-- **Contact detection (step 11)**: hybrid proximity+motion heuristic with hysteresis (`rhino/preprocessing/contact_heuristic.py`); one global config, no per-sequence tuning; `--motion-only` is the simpler fallback. Per-sequence gender/object_name metadata lives in `rhino/confs/sequence_take_mapping.json`.
-- **InteractVLM (step 12)**: runs on contact frames only, prompts with the per-sequence object name, and defaults to 4-bit NF4 + bf16 quantization (`--interactvlm-quant`), which fits a 24GB GPU (~18GB). The dtype fix and `--object_name` support are baked into the pinned lxxue/InteractVLM fork.
-- **Scene cameras**: step 9 (align_smplx) updates `processed/{c2ws.npy, intrinsic.npy, scene_pcd.ply}` with (possibly normalized) cameras from the reconstruction; step 10 reads scene c2ws from `processed/`. For stage sequences, `colmap model_aligner` with AprilTag references runs after step 2 (`--ref-camera-centers`).
-- **Camera/pose conventions**: scene cameras live in `intrinsic.npy` + `c2ws.npy`; the default object pose file is `object_poses_centered.npy`.
-- **In-the-wild sequences**: use `--normalize-scene` (step 9 centers/rescales the scene from the SMPL-X alignment; the near-1 scale sanity check applies only to non-normalized stage scenes). Step 6 keys AiOS outputs by the embedded frame id so missing detections cannot shift later frames; undetected frames are re-run through AiOS at descending thresholds (0.2/0.1/0.05), with nearest-frame fill only as a last resort. Step 9 records `processed/scene_normalization.json` on the normalize path; validators auto-detect normalized sequences from that marker (SMPL-X translation becomes advisory; step-2 raw model resolved per the reference layout).
-- **Hand masks**: included but less robust than human/object masks; `create_masks.py` re-seeds Grounding DINO inside empty SAM2 runs to recover dropouts. Boundaries are seed-sensitive. Unused by the default training sampling (`fg_obj_bg`).
-- **Validators**: `validate_raw_steps.py` (0-3), `validate_processed_steps.py` (4-10), `validate_contact_steps.py` (11-13), `verify_outputs.py` (end-to-end) compare a pipeline run against a reference run. Comparison semantics account for run-to-run variance: the camera gate scales with trajectory size (0.5% of bbox diagonal, 1cm floor); rotations and SMPL-X translations are compared after removing the global world-frame offset (AprilTag model_aligner ambiguity); betas are gated on induced canonical vertex displacement (15mm); object poses / contact / hand masks are advisory (SfM variance, heuristic sensitivity, seed-sensitive hand tracking).
-- **Evaluation**: `rhino/evaluation/` (per-frame ICP + chamfer/Hausdorff/F-score, headless rendering, comparison videos). Requires volumetric-capture GT meshes.
+## Run contract (training)
 
-## Repo Structure
+- Entry point: `cd rhino && python train.py dataset=<conf> data_root=...
+  result_root=... version=<name>`.
+- `version=` is required (train.py raises if unset). Hydra composes from
+  `rhino/confs/base.yaml`; the run directory is
+  `{result_root}/{subject}/hoi/{version}` and Hydra `chdir: true` makes ALL
+  outputs (checkpoints/, tblogger/, epoch_*/ exports) relative to it.
+- The latest `checkpoints/*.ckpt` in the run dir is auto-resolved for both
+  `model.is_continue=True` and `test_only=True`.
+- `test_only=True` exports per-frame meshes into `epoch_0000/`; add
+  `model.test_render_image=True` for the (slow) volumetric image renders.
+- `wandb: True` is the default logger; pass `wandb=False` for TensorBoard.
 
-```
-third_party/
-├── mast3r/                         # Git submodule (lxxue fork, main branch)
-├── Grounded-SAM-2/                 # Git submodule (IDEA-Research)
-├── Hierarchical-Localization/      # Git submodule (lxxue fork, image_mask branch)
-├── InteractVLM/                    # Git submodule (lxxue fork: dtype fix + --object_name)
-├── AiOS/                           # Git submodule (lxxue fork)
-├── sapiens/                        # Git submodule (facebookresearch, official)
-└── Metric3D/                       # Git submodule (YvanYin, official)
+## Architecture map
 
-rhino/
-├── train.py                    # Training entry point (Hydra + PyTorch Lightning)
-├── models/
-│   ├── hoi.py                  # HOI Lightning module
-│   ├── hoi_network.py          # HOINetwork (VolSDF rendering)
-│   ├── hoi_loss.py             # HOILoss
-│   ├── training_schedule.py    # Deterministic optimizer/contact schedule
-├── datasets/hoi.py             # HOI dataset loader
-├── datasets/__init__.py        # Factory (HOI-only; dataset key "hoi_obj")
-├── datasets/frame_utils.py     # Frame-selection contracts shared with training
-├── components/
-│   ├── ray_sampler.py          # VolSDF error-bound ray sampling
-│   ├── network.py              # ImplicitNet, RenderingNet
-│   ├── deformer.py             # RigidDeformer + skinning
-│   ├── loss.py, density.py, embedder.py, body_sampler.py
-│   ├── body_model_params.py, camera_pose_params.py, object_pose_params.py
-├── preprocessing/              # Steps 0-13 + finalize
-│   ├── select_frames.py        # Step 0: frame extraction
-│   ├── create_masks.py         # Step 1: SAM2 + Grounding DINO masks
-│   ├── estimate_camera_poses.py # Step 2: camera pose estimation (hloc/COLMAP)
-│   ├── estimate_object_poses.py # Step 3: object pose estimation (hloc/COLMAP)
-│   ├── extract_monocular_cues.py # Step 4: Metric3D depth + normals
-│   ├── prepare_base.py         # Step 5: base processed/ assembly
-│   ├── estimate_smplx.py       # Step 6: SMPL-X estimation (AiOS)
-│   ├── estimate_keypoints.py   # Step 7: Sapiens whole-body keypoints
-│   ├── convert_keypoints_to_smplx.py # Step 7 helper: coco_wholebody → SMPL-X (AiOS env)
-│   ├── refine_smplx.py         # Step 8: SMPL-X refinement
-│   ├── align_smplx.py          # Step 9: SMPL-X scene alignment
-│   ├── align_object_poses.py   # Step 10: object pose alignment + centering
-│   ├── detect_contact_frames.py # Step 11: contact frame detection
-│   ├── contact_heuristic.py    # Shared step-11 signal/rule module
-│   ├── extract_contact_vertices.py # Step 12: InteractVLM contact extraction
-│   ├── refine_contact.py       # Step 13: contact prediction refinement
-│   ├── finalize_processed.py   # Finalize: validate + manifest.json
-│   ├── run_pipeline.py         # Orchestrator for steps 0-13 + finalize
-│   ├── tool_config.py          # Centralized tool/interpreter configuration
-│   ├── path_utils.py           # Shared sequence-dir resolution
-│   ├── verify_outputs.py       # End-to-end verification vs a reference run
-│   ├── validate_*_steps.py     # Per-step-group validators
-│   ├── mast3r_matching.py      # MASt3R-based SfM (alt for steps 2+3)
-│   ├── colmap_utils.py         # run_command + undistort_images
-│   ├── record3d_utils.py       # Record3D camera loading & triangulation
-│   ├── align_utils.py          # Scene alignment utilities
-│   ├── hoi_utils.py            # RANSAC, similarity transforms
-│   └── smplx_utils.py          # GMoF robust loss (step 8)
-├── rhino_smplx/                # SMPL-X wrappers on top of the external smplx package
-│   ├── smplx_server.py, smplx_deformer.py, cano_smplx_params.py
-├── utils/
-│   ├── mesh_utils.py, render_utils.py, idr_utils.py, misc.py, sample_utils.py
-│   └── sdf_vis.py              # SDF slice visualization
-├── evaluation/                 # eval_recon, render_mesh_seq, mesh_sequence contracts, video_utils, comparison videos
-├── confs/
-│   ├── base.yaml               # Root config (placeholder paths)
-│   ├── model/hoi.yaml          # Model config (cls: rhino.models.hoi.HOI)
-│   ├── dataset/template.yaml   # Dataset config template
-│   └── sequence_take_mapping.json
-└── checkpoints/
-    ├── pose_mean_hand.npy      # Required by cano_smplx_params.py
-    └── smplx_init_last.ckpt    # Bundled canonical-human SDF initialization
+- `rhino/train.py` — Hydra entry; builds dataloaders + `rhino.models.hoi.HOI`.
+- `rhino/models/hoi.py` — Lightning module: optimization loop, per-frame
+  SMPL-X / camera / object-pose parameter groups, validation and test
+  rendering; deterministic schedule in `models/training_schedule.py`.
+- `rhino/models/hoi_network.py` — `HOINetwork`: three implicit branches
+  (human with SMPL-X-driven deformation via `components/deformer.py`, rigid
+  object, static background) rendered with VolSDF using the error-bound
+  sampler in `components/ray_sampler.py`.
+- `rhino/models/hoi_loss.py` — photometric / geometric / contact losses.
+- `rhino/datasets/hoi.py` — dataset key `hoi_obj`; pixel sampling strategies
+  `fg_obj_bg` (default) and `fg_obj_hand_bg` (adds hand-mask pixels).
+- `rhino/rhino_smplx/` — thin wrappers over the pip `smplx` package; no
+  body-model code is vendored. The directory is named `rhino_smplx` to avoid
+  an import collision with the external package — always import
+  `rhino.rhino_smplx.*`. Needs the licensed SMPL-X assets the user downloads
+  into `rhino/checkpoints/smplx/`.
+- `rhino/confs/` — `dataset/<seq>.yaml` sets `subject`, which interpolates
+  into `data_dir: stage|inthewild/<subject>/processed`; shipped configs are
+  the BenchRHINO sequences plus `demo_table` and `template.yaml`.
+- `rhino/preprocessing/` — every script is a tyro CLI; `run_pipeline.py`
+  orchestrates steps 0-13 + finalize; `tool_config.py` centralizes external
+  tool roots and interpreters (`--tools.*`); the heavy tools (SAM2, MASt3R,
+  AiOS, Sapiens, Metric3D, InteractVLM) are `third_party/` submodules, some
+  imported via `sys.path` rather than pip; `validate_*_steps.py` and
+  `verify_outputs.py` compare a pipeline run against a reference run.
+- `rhino/evaluation/` — `eval_recon.py` (per-frame ICP + chamfer / Hausdorff
+  / F-score vs BenchRHINO GT), `mesh_sequence.py` (filesystem contracts),
+  `render_mesh_seq.py` (AITViewer, intentionally a separate environment),
+  `video_utils.py` + `create_video*.py` (comparison videos).
 
-```
+## Data facts
 
-## Preprocessing Submodule Paths
+- BenchRHINO: 7 stage sequences `S1_Take3`, `S1_Take7`, `S1_Take8`,
+  `S2_Take5`, `S2_Take9`, `S3_Take6`, `S4_Take2`; the in-the-wild demo
+  sequence `demo_table` ships in the demo bundle.
+- `rhino/confs/sequence_take_mapping.json`: per-sequence GT frame offset
+  (`gt_frame = pred_frame + offset`), frame counts, SMPL-X `gender`, and the
+  `object_name` used as the InteractVLM contact prompt.
+- Pretrained checkpoints unpack to
+  `<result_root>/<seq>/hoi/pretrained/checkpoints/`.
 
-Third-party submodules are at the repo root under `third_party/`. Preprocessing scripts resolve paths dynamically via `_REPO_ROOT = Path(__file__).resolve().parents[2]` (2 levels up from `rhino/preprocessing/`). SAM2 and MASt3R are put on `sys.path` from their configured roots at run time.
+## Gotchas
 
-## Important: rhino_smplx wraps the external smplx package
-
-`rhino/rhino_smplx/` contains no vendored SMPL-X code: `SMPLXServer` builds a
-plain `smplx.SMPLX` from the pip package and recomputes the per-joint rigid
-transforms and skinning weights via `smplx.lbs` public helpers. The directory
-name avoids an import collision with the external `smplx` package; all
-internal imports use `rhino.rhino_smplx.*`.
-
-## Common Commands
-
-```bash
-conda activate rhino
-
-# Training
-cd rhino && python train.py dataset=<dataset_config> version=<version>
-```
+- numpy must stay <2: the pinned kaolin 0.17.0 / pytorch3d wheels break
+  against the numpy 2.x ABI (`import kaolin` fails with a dtype-size error).
+- There is no test suite; verify changes by importing the touched modules and
+  running a short training or `test_only` pass.
+- Default object pose file is `object_poses_centered.npy`; scene cameras are
+  `intrinsic.npy` + `c2ws.npy` in `processed/`.
+- Preprocessing scripts resolve the repo root via
+  `_REPO_ROOT = Path(__file__).resolve().parents[2]` — keep their directory
+  depth if moving files.
+- Step 1 defaults to the SAM 2.0 checkpoint `sam2_hiera_large.pt` and
+  hardcodes the matching `sam2_hiera_l.yaml` config; SAM 2.1 weights would
+  mismatch.
+- InteractVLM (step 12) runs 4-bit quantized by default to fit 24 GB GPUs.
+- Hand masks ship but are less robust than the human/object masks and are
+  unused by the default `fg_obj_bg` sampling.
+- Never commit SMPL-X body-model assets; they are licensed for
+  non-commercial use and are user-supplied.
