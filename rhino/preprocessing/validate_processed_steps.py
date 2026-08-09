@@ -1150,8 +1150,9 @@ class ValidateArgs:
     """Path to the reference run's sequence directory."""
     steps: str = "4,5,6,7,8,9,10"
     """Comma-separated step numbers to validate (subset of 4..10)."""
-    expected_frames: int = 579
-    """Expected number of frames in this sequence."""
+    expected_frames: Optional[int] = None
+    """Expected number of frames in this sequence. Derived from
+    processed/image (or images/selected_idxs.npy) when unset."""
     report_name: str = "processed_validation_report.json"
     """Filename for the JSON report (written under rhino_dir)."""
     camera_pose_dir: Optional[Path] = None
@@ -1204,6 +1205,17 @@ def main() -> None:
     if not args.ref_dir.exists():
         print(f"ERROR: Reference directory not found: {args.ref_dir}")
         sys.exit(1)
+
+    if args.expected_frames is None:
+        image_dir = args.rhino_dir / "processed" / "image"
+        n = len(list(image_dir.glob("*.png"))) if image_dir.is_dir() else 0
+        if n == 0:
+            sel = args.rhino_dir / "images" / "selected_idxs.npy"
+            n = int(np.load(sel).shape[0]) if sel.exists() else 0
+        if n == 0:
+            print("ERROR: could not derive frame count; pass --expected-frames")
+            sys.exit(1)
+        args.expected_frames = n
 
     requested = sorted({int(s) for s in args.steps.split(",") if s.strip()})
     if not args.normalize and (

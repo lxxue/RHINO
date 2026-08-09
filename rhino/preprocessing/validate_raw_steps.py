@@ -134,7 +134,10 @@ def load_colmap_reconstruction(model_dir: Path):
     rec = pycolmap.Reconstruction(str(model_dir))
     poses = {}
     for img_id, img in rec.images.items():
-        w2c_34 = img.cam_from_world().matrix()
+        cam_from_world = img.cam_from_world
+        if callable(cam_from_world):  # pycolmap >= 3.11: method; 3.10: property
+            cam_from_world = cam_from_world()
+        w2c_34 = cam_from_world.matrix()
         w2c = np.eye(4)
         w2c[:3, :] = w2c_34
         c2w = np.linalg.inv(w2c)
