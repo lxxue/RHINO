@@ -1,0 +1,42 @@
+diff --git a/mmcv/parallel/_functions.py b/mmcv/parallel/_functions.py
+index 43580b46..cdd73213 100644
+--- a/mmcv/parallel/_functions.py
++++ b/mmcv/parallel/_functions.py
+@@ -5,6 +5,8 @@ import torch
+ from torch import Tensor
+ from torch.nn.parallel._functions import _get_stream
+ 
++from packaging import version
++
+ 
+ def scatter(input: Union[List, Tensor],
+             devices: List,
+@@ -72,7 +74,11 @@ class Scatter:
+         streams = None
+         if input_device == -1 and target_gpus != [-1]:
+             # Perform CPU to GPU copies in a background stream
+-            streams = [_get_stream(device) for device in target_gpus]
++            if version.parse(torch.__version__) >= version.parse('2.1.0'):
++                streams = [_get_stream(torch.device("cuda", device)) for device in target_gpus]
++            else:
++                streams = [_get_stream(device) for device in target_gpus]
++            # streams = [_get_stream(device) for device in target_gpus]
+ 
+         outputs = scatter(input, target_gpus, streams)
+         # Synchronize with the copy stream
+diff --git a/mmcv/parallel/distributed.py b/mmcv/parallel/distributed.py
+index bf34cb59..fae42313 100644
+--- a/mmcv/parallel/distributed.py
++++ b/mmcv/parallel/distributed.py
+@@ -156,8 +156,9 @@ class MMDistributedDataParallel(DistributedDataParallel):
+         Returns:
+             Any: Forward result of :attr:`module`.
+         """
+-        module_to_run = self._replicated_tensor_module if \
+-            self._use_replicated_tensor_module else self.module
++        # module_to_run = self._replicated_tensor_module if \
++        #     self._use_replicated_tensor_module else self.module
++        module_to_run = self.module
+ 
+         if self.device_ids:
+             inputs, kwargs = self.to_kwargs(  # type: ignore

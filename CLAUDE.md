@@ -89,3 +89,13 @@ the README does not.
   unused by the default `fg_obj_bg` sampling.
 - Never commit SMPL-X body-model assets; they are licensed for
   non-commercial use and are user-supplied.
+- Source builds against the pinned torch versions need `setuptools<70` and
+  `pip --no-build-isolation` on current pip (pytorch3d, mmcv, chumpy,
+  xtcocotools, the sapiens editables); several tool setup.py files still
+  import `pkg_resources` at runtime too.
+- Run everything with `PYTHONNOUSERSITE=1`: packages in `~/.local` otherwise
+  leak into conda envs and make pip skip installing real dependencies.
+- The validators' absolute pose checks assume run and reference share a
+  processing mode (stage/AprilTag vs in-the-wild/normalize-scene world
+  frames differ by a Sim(3) + axis flip); cross-mode runs legitimately flag
+  there while masks/depth/contact/relative-motion checks stay meaningful.

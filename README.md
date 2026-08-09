@@ -63,9 +63,13 @@ pip install torch==2.1.1 torchvision==0.16.1 --index-url https://download.pytorc
 
 4. Install PyTorch3D and Kaolin:
 ```bash
-pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+pip install "setuptools<70"   # torch 2.1.1 source builds need pkg_resources.packaging
+pip install --no-build-isolation "git+https://github.com/facebookresearch/pytorch3d.git"
 pip install kaolin==0.17.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.1.1_cu121.html
 ```
+PyTorch3D builds from source against the installed torch; `--no-build-isolation`
+(and the setuptools pin) are required with current pip, which otherwise builds
+it in an isolated environment without torch.
 
 5. Install the package:
 ```bash
@@ -83,6 +87,17 @@ pip install -e .
    set. The two vertex-correspondence files are included in the SMPL-X model
    download layouts used by AiOS; they are not redistributed here because the
    body-model assets require separate acceptance of their licenses.
+
+   If you plan to run the preprocessing pipeline, additionally place
+   `SMPLX_MALE.npz`, `SMPLX_FEMALE.npz`, and `SMPLX_to_J14.pkl` in the same
+   directory (step 6 constructs a male SMPL-X internally and needs the J14
+   regressor; steps 9/11 load the npz matching `--gender`).
+
+7. Recommended on shared machines: run installs and all commands with
+   `export PYTHONNOUSERSITE=1`. Packages left in `~/.local/lib/pythonX.Y/`
+   otherwise leak into conda environments — pip silently skips installing
+   dependencies it sees there, producing environments that break once the
+   user-site content changes.
 
 </details>
 
@@ -141,7 +156,7 @@ Hand-mask detection is currently less robust than the human and object masks. We
 | Metric3D | `third_party/Metric3D` (YvanYin) | Monocular depth + normals |
 | InteractVLM | `third_party/InteractVLM` (lxxue fork) | Contact vertex prediction |
 
-**Cross-environment note**: Steps 4, 6, 7, and 12 may be invoked with separate Python interpreters (e.g., AiOS, Sapiens, InteractVLM envs). The scripts automatically add the RHINO repo root to `sys.path`, so the `rhino` package is importable without a separate install in each environment.
+**Cross-environment note**: Steps 4, 6, 7, and 12 may be invoked with separate Python interpreters (e.g., AiOS, Sapiens, InteractVLM envs). The scripts automatically add the RHINO repo root to `sys.path`, so the `rhino` package is importable without a separate install in each environment. Every tool environment does need `tyro` installed — each preprocessing script parses its CLI with tyro under whichever interpreter runs it (the setup blocks above include it).
 
 #### Tool environment setup
 
@@ -153,14 +168,22 @@ git submodule update --init --recursive
 2. Install the base camera-pose dependencies in the RHINO environment:
 ```bash
 pip install pycolmap==3.10.0
-pip install -e third_party/Hierarchical-Localization/
+pip install --no-deps -e third_party/Hierarchical-Localization/
 ```
+`--no-deps` matters: hloc's unpinned requirements pull the latest
+`opencv-python`, which forces a numpy>=2 upgrade and breaks the pinned kaolin
+build. Its runtime dependencies are already satisfied by the RHINO
+environment. (If numpy ever ends up at 2.x, `pip install "numpy<2"` restores
+the working state.)
 
 3. Set up SAM2 environment (recommended: separate conda env):
 ```bash
 conda create -n sam2 python=3.11
 conda activate sam2
 pip install -e third_party/Grounded-SAM-2/
+# Runtime deps of create_masks.py not installed by Grounded-SAM-2 itself
+# (GroundingDINO runs via HuggingFace transformers; 5.x is untested — pin <5):
+pip install "transformers<5" supervision opencv-python imageio tyro
 # Download the SAM 2.0 checkpoint. The pipeline defaults to sam2_hiera_large.pt;
 # the submodule's download_ckpts.sh fetches only the newer SAM 2.1 weights.
 wget -P third_party/Grounded-SAM-2/checkpoints \
@@ -173,19 +196,47 @@ conda create -n mast3r python=3.11
 conda activate mast3r
 pip install -r third_party/mast3r/requirements.txt
 pip install -r third_party/mast3r/dust3r/requirements.txt
+# SfM-side deps of mast3r_matching.py (glomap mapping path):
+pip install pycolmap==3.10.0 kapture kapture-localization poselib imageio tyro
+pip install --no-deps -e third_party/Hierarchical-Localization/
 ```
 MASt3R is not a pip package; the pipeline imports it by adding
-`third_party/mast3r` to `sys.path` at run time.
+`third_party/mast3r` to `sys.path` at run time. The model weights
+(`naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric`) download
+automatically from Hugging Face on first use — no manual checkpoint step.
 
 5. Set up AiOS environment (for SMPL-X estimation, step 6; also needed for step 7 keypoint conversion):
 ```bash
-conda create -n aios python=3.9
+conda create -n aios python=3.10
 conda activate aios
+# chumpy's setup.py breaks under pip build isolation — install it first:
+pip install "numpy<1.24" "setuptools<70" wheel "cython<3.1" ninja psutil
+pip install --no-build-isolation chumpy
 cd third_party/AiOS && pip install -r requirements.txt && cd -
-# Download AiOS checkpoint to third_party/AiOS/data/checkpoint/
-# AiOS also needs the licensed body models (SMPL / SMPL-X websites):
+pip install torch==2.1.1 torchvision==0.16.1 --index-url https://download.pytorch.org/whl/cu121
+pip install addict yapf debugpy tyro
+# mmcv-full 1.6.1 with CUDA ops, built from source. Two patches are required:
+# C++17 (torch >= 2.1 headers demand it) and a torch-2.x DDP compat fix.
+git clone --depth 1 -b v1.6.1 https://github.com/open-mmlab/mmcv.git /tmp/mmcv-1.6.1
+cd /tmp/mmcv-1.6.1
+sed -i 's/-std=c++14/-std=c++17/g' setup.py
+git apply /path/to/RHINO/patches/mmcv-1.6.1-torch2-compat.patch
+MMCV_WITH_OPS=1 FORCE_CUDA=1 pip install --no-build-isolation .
+cd -
+# PyTorch3D (v0.7.5, source build against the torch above):
+pip install --no-build-isolation "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.5"
+# Build AiOS's vendored Deformable-DETR CUDA op:
+cd third_party/AiOS/models/aios/ops && python setup.py build install && cd -
+# Download the AiOS checkpoint to third_party/AiOS/data/checkpoint/aios_checkpoint.pth
+# (https://github.com/ttxskk/AiOS releases / project page).
+# AiOS also needs the licensed body models (SMPL / SMPL-X websites).
+# NOTE: the submodule currently ships a stale data/body_models symlink —
+# remove it first, then create real directories or symlinks:
+#   rm third_party/AiOS/data/body_models
+#   mkdir third_party/AiOS/data/body_models
 #   third_party/AiOS/data/body_models/smpl/SMPL_NEUTRAL.pkl
-#   third_party/AiOS/data/body_models/smplx/  (symlink to rhino/checkpoints/smplx works)
+#   third_party/AiOS/data/body_models/smplx/  (symlink to rhino/checkpoints/smplx works,
+#     with the preprocessing extras from Installation step 6)
 # Use real directories or symlinks to persistent locations (not /tmp).
 ```
 
@@ -193,18 +244,36 @@ cd third_party/AiOS && pip install -r requirements.txt && cd -
 ```bash
 conda create -n sapiens python=3.10
 conda activate sapiens
-# Install PyTorch with CUDA first, then the monorepo subpackages used by the
-# pose demo (mirrors third_party/sapiens/_install/conda.sh):
-pip install chumpy scipy munkres tqdm cython fsspec yapf==0.40.1 matplotlib packaging omegaconf ipdb ftfy regex
-pip install json_tricks terminaltables modelindex prettytable albumentations libcom
+pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu121
+pip install "setuptools<70"       # sapiens setup.py files import pkg_resources
+# chumpy's setup.py breaks under pip build isolation — install it first:
+pip install numpy wheel cython
+pip install --no-build-isolation chumpy
+pip install scipy munkres tqdm fsspec yapf==0.40.1 matplotlib packaging omegaconf ipdb ftfy regex
+pip install json_tricks terminaltables modelindex prettytable albumentations pandas scikit-learn tyro
+# Do NOT install libcom or transformers here: libcom pulls the real PyPI
+# mmdet/mmpose (which shadow the sapiens forks and crash on import) and
+# upgrades torch; a present transformers breaks mmpretrain's gated BLIP
+# modules. If either got pulled in, `pip uninstall mmdet mmpose transformers`.
 cd third_party/sapiens
-pip install -e engine/
-pip install -e cv/ && pip install -r cv/requirements/optional.txt
-pip install -e pretrain/
-pip install -e pose/
-pip install -e det/
+pip install --no-build-isolation -e engine/
+pip install --no-build-isolation -e cv/ && pip install -r cv/requirements/optional.txt
+pip install --no-build-isolation -e pretrain/
+pip install --no-build-isolation -e pose/
+pip install --no-build-isolation -e det/
+# mmpose/mmdet resolve configs through a .mim tree that a plain editable
+# install does not create (openmim would):
+mkdir -p pose/mmpose/.mim det/mmdet/.mim
+ln -s ../../configs ../../demo ../../tools pose/mmpose/.mim/ 2>/dev/null || true
+ln -s ../../configs ../../tools det/mmdet/.mim/ 2>/dev/null || true
 cd -
+# xtcocotools PyPI wheels are built against numpy 2 — rebuild from source so
+# it matches the environment's numpy:
+pip install --force-reinstall --no-binary xtcocotools --no-build-isolation xtcocotools
+pip install "setuptools<70"       # re-pin; later installs may upgrade it
 # Download RTMDet and Sapiens wholebody checkpoints
+# (https://github.com/facebookresearch/sapiens — rtmdet_m person detector and
+# sapiens_2b_coco_wholebody; pass their root via --tools.sapiens-checkpoint-root)
 ```
 Note: step 7 runs Sapiens (`pose/demo/demo_vis.py`) under the Sapiens
 interpreter, then converts `coco_wholebody -> smplx` keypoints in a separate
@@ -215,7 +284,12 @@ submodule) — pass both `--tools.sapiens-python` and `--tools.aios-python`.
 ```bash
 conda create -n interactvlm python=3.10
 conda activate interactvlm
-cd third_party/InteractVLM && pip install -r requirements.txt
+# requirements.txt pins no torch but contains a git+pytorch3d line that needs
+# torch preinstalled and --no-build-isolation (plus cython for pycocotools):
+pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+pip install "setuptools<70" cython
+cd third_party/InteractVLM && pip install --no-build-isolation -r requirements.txt
+pip install "gradio_client==0.3.0" tyro   # gradio 3.39 needs the matching old client
 # Download runtime assets (data/smpl_to_smplx.pkl, data/hcontact_vitruvian/)
 # and the trained model (trained_models/interactvlm-3d-hcontact-damon/);
 # requires registration at https://interactvlm.is.tue.mpg.de
@@ -228,9 +302,12 @@ prompt names the actual object instead of the numeric frame filename.
 
 8. Metric3D (for monocular depth/normals, step 4):
 ```bash
-# Metric3D is loaded from the vendored submodule via torch.hub (source="local")
-# No separate environment needed if running in the RHINO env
-# Download pretrained weights to third_party/Metric3D/weight/
+# Metric3D is loaded from the vendored submodule via torch.hub (source="local").
+# No separate environment needed — it runs in the RHINO env after:
+pip install mmengine mmcv-lite timm
+pip install "numpy<2"   # mmengine's dep chain pulls numpy 2 — re-pin
+# Weights download automatically via torch.hub on first use (no manual step;
+# xformers is optional — the ViT backbone falls back to standard attention).
 ```
 
 </details>
@@ -346,6 +423,14 @@ heuristic intentionally improves on the heuristic that produced the original
 reference data. Hand-mask comparisons are also advisory — SAM2 hand tracking
 is seed-sensitive on small hands, so reruns reproduce coverage but not exact
 boundaries (hand masks are unused by the default `fg_obj_bg` sampling).
+
+The absolute pose comparisons (aligned camera poses, aligned SMPL-X,
+`verify_outputs`' rotation checks) assume the run and the reference were
+processed in the same mode: a stage-style run with AprilTag alignment and an
+in-the-wild run with `--normalize-scene` live in different world frames
+(scale and orientation), so those checks flag large differences by design.
+Masks, depth/normals, relative object motion, contact outputs, and the
+Sim(3)-invariant trajectory checks remain meaningful across modes.
 
 </details>
 
