@@ -127,6 +127,11 @@ python train.py dataset=demo_table \
     result_root=/path/to/rhino_demo/results \
     version=pretrained test_only=True model.test_render_image=True wandb=False
 ```
+Note that this writes into `results/demo_table/hoi/pretrained/epoch_0000/`,
+overwriting the shipped pre-rendered results in place. To keep them for
+comparison, point `result_root` at a directory containing only a copy of the
+`checkpoints/` folder.
+
 Replace `test_only=True model.test_render_image=True` with
 `model.is_continue=True` to continue training from the checkpoint instead.
 Checkpoints for the seven stage sequences are available separately — see
