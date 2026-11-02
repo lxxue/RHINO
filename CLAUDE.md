@@ -54,9 +54,11 @@ the README does not.
   AiOS, Sapiens, Metric3D, InteractVLM) are `third_party/` submodules, some
   imported via `sys.path` rather than pip; `validate_*_steps.py` and
   `verify_outputs.py` compare a pipeline run against a reference run.
-- `rhino/evaluation/` — `eval_recon.py` (per-frame ICP + chamfer / Hausdorff
-  / F-score vs BenchRHINO GT), `mesh_sequence.py` (filesystem contracts),
-  `render_mesh_seq.py` (AITViewer, intentionally a separate environment),
+- `rhino/evaluation/` — `eval_recon.py` (first-frame scaled ICP + per-frame
+  chamfer / Hausdorff / F-score vs the BenchRHINO GT `full/` meshes),
+  `mesh_sequence.py` (filesystem contracts), `render_mesh_seq.py`
+  (AITViewer, intentionally a separate environment; stage-camera views need
+  a user-supplied calibration, none ships),
   `video_utils.py` + `create_video*.py` (comparison videos).
 
 ## Data facts
@@ -65,8 +67,10 @@ the README does not.
   `S2_Take5`, `S2_Take9`, `S3_Take6`, `S4_Take2`; the in-the-wild demo
   sequence `demo_table` ships in the demo bundle.
 - `rhino/confs/sequence_take_mapping.json`: per-sequence GT frame offset
-  (`gt_frame = pred_frame + offset`), frame counts, SMPL-X `gender`, and the
-  `object_name` used as the InteractVLM contact prompt.
+  (`gt_frame = pred_frame + offset`), frame counts, SMPL-X `gender` (of the
+  GT fits and the step-11 heuristic only — training always uses the neutral
+  model, `models/hoi.py`), and the `object_name` used as the InteractVLM
+  contact prompt.
 - Pretrained checkpoints unpack to
   `<result_root>/<seq>/hoi/pretrained/checkpoints/`.
 

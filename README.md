@@ -454,11 +454,14 @@ The training code expects a final dataset layout like:
 ├── human_mask/         # Human segmentation masks
 ├── obj_mask/           # Object segmentation masks
 ├── hand_mask/          # Hand masks
-├── aligned_smplx.pkl   # SMPL-X parameters
+├── aligned_smplx.pkl   # SMPL-X parameters (neutral model, 300 betas)
 ├── intrinsic.npy       # Scene camera intrinsics
-├── c2ws.npy            # Scene camera extrinsics
-├── object_poses_centered.npy  # Centered object poses (default)
-├── object_poses.npy    # Object poses (intermediate)
+├── c2ws.npy            # Scene camera extrinsics (camera-to-world, OpenCV)
+├── object_poses_centered.npy  # World-to-object poses, centered object frame (default)
+├── object_poses.npy    # World-to-object poses, uncentered object frame (intermediate)
+├── object_pcd.ply      # Object SfM points, uncentered object frame (not read by training)
+├── object_pcd_centered.ply    # Same, centered object frame (step 11 only)
+├── scene_pcd.ply       # Background SfM points, world frame (not read by training)
 ├── contact_labels.npy
 ├── contact_vertices_refined.npy
 └── manifest.json       # Finalize validation output
@@ -546,7 +549,7 @@ counter restarts in test-only runs). Use `model.is_continue=True` instead of
 ## Evaluation
 
 `rhino/evaluation/` contains the scripts used for the paper's reconstruction
-metrics: per-frame ICP alignment + chamfer / Hausdorff / F-score against the
+metrics: ICP alignment + per-frame chamfer / Hausdorff / F-score against the
 BenchRHINO GT evaluation subset from the
 [dataset download page](https://rhino.ait.ethz.ch/).
 
@@ -554,15 +557,16 @@ BenchRHINO GT evaluation subset from the
 <summary>Evaluation workflow [click to expand]</summary>
 
 The scripts compare the test-time mesh exports (`mesh_deformed/`,
-`mesh_obj/` under the training run's `epoch_*/` directory) against
-volumetric-capture ground-truth meshes (one `.obj` per frame). The GT subset
-ships per-frame separated human/object meshes, SMPL-X fittings, vertex
-labels, contact labels, and camera calibration; its README explains how
-to assemble the combined `mesh-f%05d.obj` frames expected here (merge
-`separated/{human,object}` per frame and scale to millimeters; frame offsets
-are in `rhino/confs/sequence_take_mapping.json`).
+`mesh_obj/` under the training run's `epoch_*/` directory) against the
+complete volumetric-capture mesh of each frame. Unzipped GT archives work
+as-is: `--gt-dir` is the folder holding `<seq>/full/{gt_frame:05d}.ply`
+(meters, 0-based; frame offsets are in
+`rhino/confs/sequence_take_mapping.json`). Raw capture exports
+(`<take>/frames/mesh-f%05d.obj`, millimeters) are also accepted.
 
-- Per-frame ICP alignment + chamfer / Hausdorff / F-score metrics:
+- ICP alignment + per-frame chamfer / Hausdorff / F-score metrics (one
+  scaled point-to-point ICP is fitted on the first evaluated frame and
+  applied to every frame):
 ```bash
 python -m rhino.evaluation.eval_recon \
     --seq-name <sequence> --version-name <training_version> \
@@ -574,11 +578,12 @@ python -m rhino.evaluation.eval_recon \
   GT frame-count sanity check defaults to the RHINO capture lengths
   (449/450); pass `--expected-gt-frames N` for other datasets.
 
-- Headless rendering of predicted / GT / composite mesh sequences
-  (`rhino/evaluation/render_mesh_seq.py`, aitviewer-based; stage camera
-  calibrations ship in `rhino/evaluation/rgb_cameras.npz`), and side-by-side
-  comparison videos (`rhino/evaluation/create_video.py`,
-  `create_video_multiple_versions.py`).
+- Headless rendering of predicted / GT / composite mesh sequences from the
+  input-video camera (`rhino/evaluation/render_mesh_seq.py`, aitviewer-based,
+  `--cam-ids iphone`), and side-by-side comparison videos
+  (`rhino/evaluation/create_video.py`, `create_video_multiple_versions.py`).
+  Capture-stage camera calibrations are not distributed; numeric stage camera
+  ids need your own calibration via `--stage-cameras`.
 
   AITViewer is intentionally not part of the core RHINO installation: its
   published dependency constraints conflict with the Python/NumPy versions
