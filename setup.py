@@ -15,7 +15,6 @@ setup(
             "checkpoints/pose_mean_hand.npy",
             "checkpoints/smplx_init_last.ckpt",
         ],
-        "rhino.evaluation": ["*.npz"],
     },
     install_requires=[
         "numpy>=1.25.0,<2",

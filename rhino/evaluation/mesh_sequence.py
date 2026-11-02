@@ -7,14 +7,25 @@ from typing import Optional
 
 
 RHINO_GT_FRAME_COUNTS = {449, 450}
-_GT_PATTERN = re.compile(r"mesh-f(\d{5})\.obj")
+# BenchRHINO release: <gt_dir>/<seq>/full/{gt_frame:05d}.ply, meters, 0-based.
+_GT_FULL_PATTERN = re.compile(r"(\d{5})\.ply")
+# Raw capture-system export: <gt_dir>/<take>/frames/mesh-f{frame:05d}.obj, millimeters.
+_GT_FRAMES_PATTERN = re.compile(r"mesh-f(\d{5})\.obj")
 _PRED_PATTERN = re.compile(r"(\d{4})\.ply")
 _EPOCH_PATTERN = re.compile(r"epoch_(\d+)")
 
 
 @dataclass(frozen=True)
+class GTMeshes:
+    files: dict[int, Path]
+    directory: Path
+    unit_divisor: float  # divide GT vertices by this to get meters
+
+
+@dataclass(frozen=True)
 class MeshSequence:
     gt_files: dict[int, Path]
+    gt_unit_divisor: float
     human_files: dict[int, Path]
     object_files: dict[int, Path]
     frame_pairs: list[tuple[int, int]]
@@ -92,12 +103,30 @@ def find_latest_epoch(version_dir: Path) -> Path:
 
 
 def parse_gt_meshes(
-    gt_frames_dir: Path, expected_gt_frames: Optional[int] = None
-) -> dict[int, Path]:
-    gt_files = _parse_indexed_files(gt_frames_dir, ".obj", _GT_PATTERN, "GT mesh")
-    check_gt_frame_count(len(gt_files), expected_gt_frames, f"gt_dir={gt_frames_dir}")
+    gt_take_dir: Path, expected_gt_frames: Optional[int] = None
+) -> GTMeshes:
+    """Find the per-frame GT meshes of one take.
+
+    Two layouts are accepted, checked in this order:
+      - ``<gt_take_dir>/full/{gt_frame:05d}.ply`` in meters (BenchRHINO release);
+      - ``<gt_take_dir>/frames/mesh-f{frame:05d}.obj`` in millimeters (raw
+        capture-system export).
+    """
+    full_dir = gt_take_dir / "full"
+    frames_dir = gt_take_dir / "frames"
+    if full_dir.is_dir():
+        directory, suffix, pattern, unit_divisor = full_dir, ".ply", _GT_FULL_PATTERN, 1.0
+    elif frames_dir.is_dir():
+        directory, suffix, pattern, unit_divisor = frames_dir, ".obj", _GT_FRAMES_PATTERN, 1000.0
+    else:
+        raise FileNotFoundError(
+            f"No GT meshes under {gt_take_dir}: expected full/ (BenchRHINO release, "
+            "meters) or frames/ (mesh-f*.obj, millimeters)"
+        )
+    gt_files = _parse_indexed_files(directory, suffix, pattern, "GT mesh")
+    check_gt_frame_count(len(gt_files), expected_gt_frames, f"gt_dir={directory}")
     _require_contiguous(set(gt_files), "GT mesh")
-    return gt_files
+    return GTMeshes(gt_files, directory, unit_divisor)
 
 
 def parse_predicted_meshes(directory: Path, label="predicted mesh") -> dict[int, Path]:
@@ -125,13 +154,13 @@ def build_frame_pairs(
 
 
 def validate_mesh_sequences(
-    gt_frames_dir: Path,
+    gt_take_dir: Path,
     epoch_dir: Path,
     offset: int,
     expected_gt_frames: Optional[int] = None,
 ) -> MeshSequence:
-    gt_files = parse_gt_meshes(gt_frames_dir, expected_gt_frames)
-    gt_ids = set(gt_files)
+    gt = parse_gt_meshes(gt_take_dir, expected_gt_frames)
+    gt_ids = set(gt.files)
 
     human_files = parse_predicted_meshes(
         epoch_dir / "mesh_deformed", "predicted human mesh"
@@ -148,4 +177,4 @@ def validate_mesh_sequences(
             f"object_only={sorted(object_ids - human_ids)[:10]}"
         )
     frame_pairs = build_frame_pairs(human_ids, gt_ids, offset)
-    return MeshSequence(gt_files, human_files, object_files, frame_pairs)
+    return MeshSequence(gt.files, gt.unit_divisor, human_files, object_files, frame_pairs)

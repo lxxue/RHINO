@@ -1,4 +1,9 @@
-"""Per-frame ICP alignment + chamfer / Hausdorff / F-score metrics vs GT meshes."""
+"""Chamfer / Hausdorff / F-score metrics of a reconstructed sequence vs GT meshes.
+
+The prediction is aligned to the GT with one scaled point-to-point ICP fitted on
+the first evaluated frame pair; that similarity transform is reused for every
+frame.
+"""
 
 import json
 from pathlib import Path
@@ -31,11 +36,10 @@ def _preflight(
     expected_gt_frames: Optional[int] = None,
 ):
     """Resolve and validate the complete predicted/GT sequence contract."""
-    gt_frames_dir = gt_dir / take_name / "frames"
     version_dir = pred_dir / seq_name / subdir / version_name
     epoch_dir = find_latest_epoch(version_dir)
     sequence = validate_mesh_sequences(
-        gt_frames_dir, epoch_dir, offset, expected_gt_frames
+        gt_dir / take_name, epoch_dir, offset, expected_gt_frames
     )
     return epoch_dir, sequence
 
@@ -51,7 +55,7 @@ def eval_seq(
     subdir: str = "hoi",
     expected_gt_frames: Optional[int] = None,
 ):
-    """Per-frame ICP + metrics for one (seq, subdir, version) triple."""
+    """First-frame ICP alignment + per-frame metrics for one (seq, subdir, version)."""
     gt_dir = Path(gt_dir)
     pred_dir = Path(pred_dir)
     output_dir = Path(output_dir)
@@ -102,7 +106,7 @@ def eval_seq(
         if not gt_mesh.has_vertices():
             raise ValueError(f"GT mesh is empty: {sequence.gt_files[gt_id]}")
         gt_mesh.vertices = o3d.utility.Vector3dVector(
-            np.array(gt_mesh.vertices) / 1000.0
+            np.array(gt_mesh.vertices) / sequence.gt_unit_divisor
         )
         gt_mesh.compute_vertex_normals()
         gt_pcd = o3d.geometry.PointCloud()
@@ -173,6 +177,8 @@ def eval_seq(
         "num_frames_gt": int(num_frames_gt),
         "num_frames_pred": int(num_frames_pred),
         "num_overlap": int(num_overlap),
+        "gt_mesh_dir": str(sequence.gt_files[min(sequence.gt_files)].parent),
+        "gt_unit_divisor": float(sequence.gt_unit_divisor),
         "alignment_mode": "first_frame_icp_with_scaling",
     }
 

@@ -44,10 +44,11 @@ def _load_renderer_dependencies():
 
 
 def render_normal_w_aitviewer(
-    camera_path: Path,
+    camera_path: Optional[Path],
     iphone_dir: Path,
     pred_mesh_dir: Path,
-    gt_mesh_dir: Path,
+    gt_files: dict,
+    gt_unit_divisor: float,
     render_dir: Path,
     cam_ids: list,
     render_iphone: bool,
@@ -70,7 +71,7 @@ def render_normal_w_aitviewer(
     viewer.scene.lights = []
     viewer.backface_culling = False
 
-    camera_infos = dict(np.load(camera_path))
+    camera_infos = dict(np.load(camera_path)) if cam_ids else {}
     cameras = {}
     for cam_id in cam_ids:
         idx = np.where(camera_infos["ids"] == cam_id)[0][0]
@@ -112,10 +113,10 @@ def render_normal_w_aitviewer(
             )
             m = pred_mesh
         elif mode == "gt":
-            gt_mesh = trimesh.load_mesh(str(gt_mesh_dir / f"mesh-f{i + offset:05d}.obj"))
+            gt_mesh = trimesh.load_mesh(str(gt_files[i + offset]))
             if len(gt_mesh.vertices) == 0:
-                raise ValueError(f"Empty GT mesh: {gt_mesh_dir / f'mesh-f{i + offset:05d}.obj'}")
-            gt_mesh.vertices = np.array(gt_mesh.vertices) / 1000.0
+                raise ValueError(f"Empty GT mesh: {gt_files[i + offset]}")
+            gt_mesh.vertices = np.array(gt_mesh.vertices) / gt_unit_divisor
             gt_mesh.visual.vertex_colors = np.full(
                 (len(gt_mesh.vertices), 4), gt_color, dtype=np.uint8
             )
@@ -125,10 +126,10 @@ def render_normal_w_aitviewer(
             pred_mesh_vertex_colors = np.full(
                 (len(pred_mesh.vertices), 4), pred_color, dtype=np.uint8
             )
-            gt_mesh = trimesh.load_mesh(str(gt_mesh_dir / f"mesh-f{i + offset:05d}.obj"))
+            gt_mesh = trimesh.load_mesh(str(gt_files[i + offset]))
             if len(pred_mesh.vertices) == 0 or len(gt_mesh.vertices) == 0:
                 raise ValueError(f"Empty mesh at predicted frame {i}, GT frame {i + offset}")
-            gt_mesh.vertices = np.array(gt_mesh.vertices) / 1000.0
+            gt_mesh.vertices = np.array(gt_mesh.vertices) / gt_unit_divisor
             gt_mesh_vertex_colors = np.full(
                 (len(gt_mesh.vertices), 4), gt_color, dtype=np.uint8
             )
@@ -195,23 +196,34 @@ def main(
     mode: str = "pred",
     scale: float = 1.0,
     expected_gt_frames: Optional[int] = None,
+    stage_cameras: Optional[Path] = None,
 ):
-    """Headless mesh renderer for pred / gt / composite modes."""
+    """Headless mesh renderer for pred / gt / composite modes.
+
+    ``cam_ids`` may contain ``iphone`` (the input-video camera, from the
+    processed sequence) and numeric capture-stage camera ids. Stage calibrations
+    are not distributed; numeric ids need ``--stage-cameras <npz>`` with keys
+    ``ids``, ``intrinsics`` and ``extrinsics``.
+    """
     output_dir = Path(output_dir)
     gt_dir = Path(gt_dir)
     data_dir = Path(data_dir)
 
     render_iphone = "iphone" in cam_ids
     stage_cam_ids = [int(c) for c in cam_ids if c != "iphone"]
+    if stage_cam_ids and stage_cameras is None:
+        raise ValueError(
+            "Numeric cam_ids render capture-stage views and need --stage-cameras "
+            "<npz>; stage calibrations are not distributed. Use cam_ids iphone."
+        )
 
-    camera_path = Path(__file__).parent / "rgb_cameras.npz"
     pred_mesh_dir = (
         output_dir / seq_name / subdir / version_name / "aligned_meshes"
     )
     iphone_dir = data_dir / seq_name / "processed"
-    gt_frames_dir = gt_dir / take_name / "frames"
 
-    gt_files = parse_gt_meshes(gt_frames_dir, expected_gt_frames)
+    gt = parse_gt_meshes(gt_dir / take_name, expected_gt_frames)
+    gt_files = gt.files
 
     iphone_render_dir: Optional[Path] = None
     if mode == "pred":
@@ -245,10 +257,11 @@ def main(
         print(f"iphone_render_dir: {iphone_render_dir}")
 
     render_normal_w_aitviewer(
-        camera_path=camera_path,
+        camera_path=Path(stage_cameras) if stage_cameras is not None else None,
         iphone_dir=iphone_dir,
         pred_mesh_dir=pred_mesh_dir,
-        gt_mesh_dir=gt_frames_dir,
+        gt_files=gt_files,
+        gt_unit_divisor=gt.unit_divisor,
         render_dir=render_dir,
         cam_ids=stage_cam_ids,
         render_iphone=render_iphone,
